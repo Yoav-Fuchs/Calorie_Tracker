@@ -1,74 +1,47 @@
-import io
-from PIL import Image
-import torch
-
-try:
-    from ultralytics import YOLO
-    from transformers import pipeline
-except ImportError:
-    # During installation, these might fail
-    YOLO = None
-    pipeline = None
+import os
+import httpx
 
 class MLPipeline:
-    def __init__(self):
-        print("Initializing ML Models... This may take a while on the first run.")
-        # 1. Segmentation Model (YOLOv8-seg)
-        if YOLO:
-            self.seg_model = YOLO('yolov8n-seg.pt')  # Nano version for speed
-        else:
-            self.seg_model = None
+    def __init__(self, api_key: str = None):
+        print("Initializing ML Pipeline using Hugging Face API...")
+        self.api_key = api_key or os.getenv("HF_API_KEY")
+        self.api_url = "https://api-inference.huggingface.co/models/ashaduzzaman/vit-finetuned-food101"
 
-        # 2. Classification Model (ViT fine-tuned on Food-101)
-        if pipeline is not None:
-            try:
-                self.classifier = pipeline("image-classification", model="ashaduzzaman/vit-finetuned-food101")
-                self.models_loaded = {'vit': True}
-                print("ViT Food-101 loaded successfully.")
-            except Exception as e:
-                print(f"Error loading ViT: {e}")
-                self.classifier = None
-        else:
-            self.classifier = None
-
-        # 3. Depth Estimation (MiDaS)
-        try:
-            self.midas = torch.hub.load("intel-isl/MiDaS", "MiDaS_small")
-            device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
-            self.midas.to(device)
-            self.midas.eval()
-            self.midas_transforms = torch.hub.load("intel-isl/MiDaS", "transforms").small_transform
-        except Exception as e:
-            print(f"Error loading MiDaS: {e}")
-            self.midas = None
-
-    def analyze_image(self, image_bytes: bytes):
+    async def analyze_image(self, image_bytes: bytes):
         """
-        Runs the image through the 3-step pipeline.
+        Runs the image through the Hugging Face Free Inference API.
         """
-        image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
-        
-        # In a complete implementation, we would:
-        # 1. Run YOLO to crop out individual food items from the plate.
-        # 2. Run ViT on each cropped item.
-        # 3. Run MiDaS on the original image, cross-reference with YOLO bounding boxes,
-        #    and integrate depth values to estimate relative volume.
-        
-        # Since this is a foundation, we run ViT on the whole image as an example
+        headers = {}
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
+
         results = []
-        if self.classifier:
-            preds = self.classifier(image)
-            top_pred = preds[0]
-            
-            # Simulated Volume based on a fixed value for demonstration
-            # Actual volume requires reference object logic and depth integration.
-            simulated_volume = 150.0 
-            
-            results.append({
-                "name": top_pred["label"].title(),
-                "confidence": top_pred["score"],
-                "estimated_volume_cm3": simulated_volume,
-                "estimated_weight_g": simulated_volume * 1.05 # Assuming density slightly higher than water
-            })
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    self.api_url, 
+                    headers=headers, 
+                    content=image_bytes,
+                    timeout=30.0 # Cold starts can take 20-30 seconds
+                )
+                
+            if response.status_code == 200:
+                preds = response.json()
+                if preds and isinstance(preds, list):
+                    top_pred = preds[0]
+                    
+                    # Simulated Volume based on a fixed value for demonstration
+                    simulated_volume = 150.0 
+                    
+                    results.append({
+                        "name": top_pred["label"].title(),
+                        "confidence": top_pred["score"],
+                        "estimated_volume_cm3": simulated_volume,
+                        "estimated_weight_g": simulated_volume * 1.05 
+                    })
+            else:
+                print(f"Hugging Face API Error: {response.status_code} - {response.text}")
+        except Exception as e:
+            print(f"Error calling Hugging Face API: {e}")
             
         return results

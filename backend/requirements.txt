@@ -4,10 +4,4 @@ python-multipart
 pydantic
 python-dotenv
 httpx
-# ML Dependencies enabled for Docker
-torch
-torchvision
-ultralytics
-transformers
 Pillow
-opencv-python-headless

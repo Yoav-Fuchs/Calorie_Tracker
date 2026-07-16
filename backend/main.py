@@ -1,3 +1,5 @@
+import os
+import time
 from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -17,9 +19,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize Heavy Models at Startup
-# We instantiate the pipeline here so it loads models into memory once when server starts.
-ml_pipeline = MLPipeline()
+# Initialize API-based ML Pipeline
+ml_pipeline = MLPipeline(api_key=os.getenv("HF_API_KEY"))
 usda_client = USDAClient()
 
 class NutritionalInfo(BaseModel):
@@ -50,8 +51,8 @@ async def analyze_food(file: UploadFile = File(...)):
     # 1. Read image
     content = await file.read()
     
-    # 2. Run ML Pipeline
-    ml_results = ml_pipeline.analyze_image(content)
+    # 2. Run API-based ML Pipeline
+    ml_results = await ml_pipeline.analyze_image(content)
     
     items = []
     for res in ml_results:
