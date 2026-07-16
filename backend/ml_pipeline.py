@@ -11,7 +11,7 @@ class MLPipeline:
         """
         Runs the image through the Hugging Face Free Inference API.
         """
-        headers = {}
+        headers = {"Content-Type": "application/octet-stream"}
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
 
