@@ -20,9 +20,8 @@ class MLPipeline:
             self.seg_model = None
 
         # 2. Classification Model (ViT fine-tuned on Food-101)
-        if pipeline:
+        if pipeline is not None:
             try:
-                from transformers import pipeline
                 self.classifier = pipeline("image-classification", model="ashaduzzaman/vit-finetuned-food101")
                 self.models_loaded = {'vit': True}
                 print("ViT Food-101 loaded successfully.")
