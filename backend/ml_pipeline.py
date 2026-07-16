@@ -1,47 +1,71 @@
 import os
-import httpx
+import google.generativeai as genai
+import json
 
 class MLPipeline:
     def __init__(self, api_key: str = None):
-        print("Initializing ML Pipeline using Hugging Face API...")
-        self.api_key = api_key or os.getenv("HF_API_KEY")
-        self.api_url = "https://router.huggingface.co/hf-inference/models/nateraw/food"
+        print("Initializing Gemini Vision Pipeline...")
+        self.api_key = api_key or os.getenv("GEMINI_API_KEY")
+        if self.api_key:
+            genai.configure(api_key=self.api_key)
+            self.model = genai.GenerativeModel('gemini-1.5-flash')
+        else:
+            self.model = None
+            print("WARNING: GEMINI_API_KEY is not set.")
 
     async def analyze_image(self, image_bytes: bytes):
         """
-        Runs the image through the Hugging Face Free Inference API.
+        Runs the image through Gemini Vision and extracts structured nutritional JSON data.
         """
-        headers = {"Content-Type": "application/octet-stream"}
-        if self.api_key:
-            headers["Authorization"] = f"Bearer {self.api_key}"
+        if not self.model:
+            return []
 
-        results = []
+        prompt = """
+        Analyze this image of food. Identify all the main food components.
+        For each component, visually estimate the weight in grams and provide the macro nutritional values (calories, protein in grams, carbs in grams, fat in grams).
+        Return ONLY a raw JSON array of objects. Do not include markdown formatting or backticks like ```json.
+        Example Format of each object:
+        {
+          "name": "Grilled Chicken Breast",
+          "confidence": 0.95,
+          "estimated_weight_g": 200,
+          "estimated_volume_cm3": 200,
+          "calories": 330,
+          "protein_g": 62,
+          "carbs_g": 0,
+          "fat_g": 7
+        }
+        """
+        
         try:
-            async with httpx.AsyncClient() as client:
-                response = await client.post(
-                    self.api_url, 
-                    headers=headers, 
-                    content=image_bytes,
-                    timeout=30.0 # Cold starts can take 20-30 seconds
-                )
-                
-            if response.status_code == 200:
-                preds = response.json()
-                if preds and isinstance(preds, list):
-                    top_pred = preds[0]
-                    
-                    # Simulated Volume based on a fixed value for demonstration
-                    simulated_volume = 150.0 
-                    
-                    results.append({
-                        "name": top_pred["label"].title(),
-                        "confidence": top_pred["score"],
-                        "estimated_volume_cm3": simulated_volume,
-                        "estimated_weight_g": simulated_volume * 1.05 
-                    })
-            else:
-                print(f"Hugging Face API Error: {response.status_code} - {response.text}")
-        except Exception as e:
-            print(f"Error calling Hugging Face API: {e}")
+            image_parts = [
+                {
+                    "mime_type": "image/jpeg",
+                    "data": image_bytes
+                }
+            ]
             
-        return results
+            # This runs synchronously in the current thread, but works extremely fast for 1.5 Flash.
+            response = self.model.generate_content([prompt, image_parts[0]])
+            
+            raw_text = response.text.strip()
+            if raw_text.startswith("```json"):
+                raw_text = raw_text[7:-3]
+            elif raw_text.startswith("```"):
+                raw_text = raw_text[3:-3]
+                
+            results = json.loads(raw_text)
+            
+            # Ensure proper structure
+            for r in results:
+                if 'nutrition' not in r:
+                    r['nutrition'] = {
+                        "calories": r.get("calories", 0),
+                        "protein_g": r.get("protein_g", 0),
+                        "carbs_g": r.get("carbs_g", 0),
+                        "fat_g": r.get("fat_g", 0)
+                    }
+            return results
+        except Exception as e:
+            print(f"Error calling Gemini API: {e}")
+            return []

@@ -5,3 +5,7 @@ pydantic
 python-dotenv
 httpx
 Pillow
+sqlalchemy
+passlib[bcrypt]
+pyjwt
+google-generativeai
