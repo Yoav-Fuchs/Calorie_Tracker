@@ -59,6 +59,25 @@ class AnalysisResponse(BaseModel):
 
 # --- Auth Routes ---
 
+@app.post("/debug-register")
+def debug_register(user: UserCreate):
+    from database import SessionLocal
+    try:
+        db = SessionLocal()
+        db_user = db.query(User).filter(User.username == user.username).first()
+        if db_user:
+            return {"error": "Username already registered"}
+        hashed_password = get_password_hash(user.password)
+        new_user = User(username=user.username, password_hash=hashed_password)
+        db.add(new_user)
+        db.commit()
+        db.refresh(new_user)
+        db.close()
+        return {"message": "Success"}
+    except Exception as e:
+        import traceback
+        return {"error": str(e), "trace": traceback.format_exc()}
+
 @app.post("/register")
 def register(user: UserCreate, db: Session = Depends(get_db)):
     try:
