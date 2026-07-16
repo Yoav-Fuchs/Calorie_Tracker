@@ -28,7 +28,7 @@ function App() {
     formData.append('file', file);
 
     try {
-      const response = await fetch('http://127.0.0.1:8000/analyze-food', {
+      const response = await fetch('https://calorie-tracker-deco.onrender.com/analyze-food', {
         method: 'POST',
         body: formData,
       });
