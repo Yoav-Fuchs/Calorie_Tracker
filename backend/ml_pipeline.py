@@ -21,8 +21,14 @@ class MLPipeline:
 
         # 2. Classification Model (ViT fine-tuned on Food-101)
         if pipeline:
-            # We use nateraw/food101 which is a standard choice for food-101 on Hugging Face
-            self.classifier = pipeline("image-classification", model="nateraw/food101")
+            try:
+                from transformers import pipeline
+                self.classifier = pipeline("image-classification", model="ashaduzzaman/vit-finetuned-food101")
+                self.models_loaded = {'vit': True}
+                print("ViT Food-101 loaded successfully.")
+            except Exception as e:
+                print(f"Error loading ViT: {e}")
+                self.classifier = None
         else:
             self.classifier = None
 
