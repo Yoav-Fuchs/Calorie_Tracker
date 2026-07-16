@@ -13,7 +13,7 @@ function AuthPage() {
     setError('');
 
     const endpoint = isLogin ? '/login' : '/register';
-    const baseUrl = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
+    const baseUrl = import.meta.env.VITE_API_URL || 'https://calorie-tracker-deco.onrender.com';
 
     try {
       let response;
