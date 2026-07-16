@@ -5,7 +5,7 @@ class MLPipeline:
     def __init__(self, api_key: str = None):
         print("Initializing ML Pipeline using Hugging Face API...")
         self.api_key = api_key or os.getenv("HF_API_KEY")
-        self.api_url = "https://router.huggingface.co/hf-inference/models/ashaduzzaman/vit-finetuned-food101"
+        self.api_url = "https://router.huggingface.co/hf-inference/models/google/vit-base-patch16-224"
 
     async def analyze_image(self, image_bytes: bytes):
         """
