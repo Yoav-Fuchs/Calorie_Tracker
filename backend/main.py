@@ -141,12 +141,19 @@ async def analyze_food(
     db: Session = Depends(get_db), 
     current_user: User = Depends(get_current_user)
 ):
+    print(f"\n[{current_user.username}] Uploaded image for analysis: {file.filename}")
     start_time = time.time()
     content = await file.read()
+    print(f"Image size: {len(content) / 1024:.2f} KB")
     
     # Run Gemini Vision Pipeline
     ml_results = await ml_pipeline.analyze_image(content)
     
+    if not ml_results:
+        print("No food items found or API failed.")
+    else:
+        print(f"Found {len(ml_results)} food items!")
+        
     items = []
     for res in ml_results:
         nut = res.get("nutrition", {})
