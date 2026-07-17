@@ -30,6 +30,7 @@ class FoodLog(Base):
     protein_g = Column(Float)
     carbs_g = Column(Float)
     fat_g = Column(Float)
+    items_json = Column(String, default="[]")
     created_at = Column(DateTime, default=datetime.utcnow)
 
     owner = relationship("User", back_populates="logs")

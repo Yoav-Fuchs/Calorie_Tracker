@@ -39,6 +39,8 @@ class Token(BaseModel):
     access_token: str
     token_type: str
 
+import json
+
 class NutritionalInfo(BaseModel):
     calories: float
     protein_g: float
@@ -46,15 +48,20 @@ class NutritionalInfo(BaseModel):
     fat_g: float
 
 class FoodItem(BaseModel):
-    id: int = None
     name: str
     confidence: float = 1.0
     estimated_volume_cm3: float = 0.0
     estimated_weight_g: float = 0.0
     nutrition: NutritionalInfo
 
-class AnalysisResponse(BaseModel):
+class MealLogResponse(BaseModel):
+    id: int
+    name: str
+    nutrition: NutritionalInfo
     items: List[FoodItem]
+
+class AnalysisResponse(BaseModel):
+    meal: MealLogResponse
     processing_time_ms: float
 
 # --- Auth Routes ---
@@ -109,12 +116,17 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
 def read_root():
     return {"message": "Calorie Tracker API is running"}
 
-@app.get("/logs", response_model=List[FoodItem])
+@app.get("/logs", response_model=List[MealLogResponse])
 def get_logs(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     logs = db.query(FoodLog).filter(FoodLog.user_id == current_user.id).order_by(FoodLog.created_at.desc()).all()
     results = []
     for log in logs:
-        results.append(FoodItem(
+        try:
+            items = json.loads(log.items_json) if log.items_json else []
+        except:
+            items = []
+            
+        results.append(MealLogResponse(
             id=log.id,
             name=log.name,
             nutrition=NutritionalInfo(
@@ -122,7 +134,8 @@ def get_logs(db: Session = Depends(get_db), current_user: User = Depends(get_cur
                 protein_g=log.protein_g,
                 carbs_g=log.carbs_g,
                 fat_g=log.fat_g
-            )
+            ),
+            items=[FoodItem(**item) for item in items]
         ))
     return results
 
@@ -151,43 +164,65 @@ async def analyze_food(
     
     if not ml_results:
         print("No food items found or API failed.")
-    else:
-        print(f"Found {len(ml_results)} food items!")
+        raise HTTPException(status_code=400, detail="Failed to analyze image.")
         
-    items = []
+    print(f"Found {len(ml_results)} food items!")
+    
+    total_calories = 0
+    total_protein = 0
+    total_carbs = 0
+    total_fat = 0
+    
+    items_list = []
+    
     for res in ml_results:
         nut = res.get("nutrition", {})
+        total_calories += float(nut.get("calories", 0))
+        total_protein += float(nut.get("protein_g", 0))
+        total_carbs += float(nut.get("carbs_g", 0))
+        total_fat += float(nut.get("fat_g", 0))
         
-        # Save to database immediately
-        new_log = FoodLog(
-            user_id=current_user.id,
-            name=res.get("name", "Unknown Food"),
-            calories=nut.get("calories", 0),
-            protein_g=nut.get("protein_g", 0),
-            carbs_g=nut.get("carbs_g", 0),
-            fat_g=nut.get("fat_g", 0)
-        )
-        db.add(new_log)
-        db.commit()
-        db.refresh(new_log)
+        items_list.append({
+            "name": res.get("name", "Unknown Food"),
+            "confidence": float(res.get("confidence", 1.0)),
+            "estimated_volume_cm3": float(res.get("estimated_volume_cm3", 0.0)),
+            "estimated_weight_g": float(res.get("estimated_weight_g", 0.0)),
+            "nutrition": nut
+        })
         
-        items.append(FoodItem(
-            id=new_log.id,
-            name=new_log.name,
-            confidence=res.get("confidence", 1.0),
-            estimated_volume_cm3=res.get("estimated_volume_cm3", 0.0),
-            estimated_weight_g=res.get("estimated_weight_g", 0.0),
-            nutrition=NutritionalInfo(
-                calories=new_log.calories,
-                protein_g=new_log.protein_g,
-                carbs_g=new_log.carbs_g,
-                fat_g=new_log.fat_g
-            )
-        ))
+    meal_name = f"Meal ({len(items_list)} items)"
+    if len(items_list) == 1:
+        meal_name = items_list[0]["name"]
         
+    # Save a single Meal log
+    new_log = FoodLog(
+        user_id=current_user.id,
+        name=meal_name,
+        calories=total_calories,
+        protein_g=total_protein,
+        carbs_g=total_carbs,
+        fat_g=total_fat,
+        items_json=json.dumps(items_list)
+    )
+    db.add(new_log)
+    db.commit()
+    db.refresh(new_log)
+    
+    meal_response = MealLogResponse(
+        id=new_log.id,
+        name=new_log.name,
+        nutrition=NutritionalInfo(
+            calories=new_log.calories,
+            protein_g=new_log.protein_g,
+            carbs_g=new_log.carbs_g,
+            fat_g=new_log.fat_g
+        ),
+        items=[FoodItem(**item) for item in items_list]
+    )
+
     processing_time = (time.time() - start_time) * 1000
 
     return AnalysisResponse(
-        items=items,
+        meal=meal_response,
         processing_time_ms=processing_time
     )
